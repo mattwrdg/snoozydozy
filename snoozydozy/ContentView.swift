@@ -102,6 +102,7 @@ struct BabyInfoView: View {
     @State private var breastfeeding = "Ja"
     @State private var height = "52"
     @State private var weight = "3750"
+    @State private var showSleepTracking = false
     
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -191,7 +192,7 @@ struct BabyInfoView: View {
                 
                 // Weiter Button
                 Button(action: {
-                    // Weiter Action
+                    showSleepTracking = true
                 }) {
                     Text("Weiter")
                         .font(.system(size: 17, weight: .semibold))
@@ -216,6 +217,9 @@ struct BabyInfoView: View {
         }
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .navigationDestination(isPresented: $showSleepTracking) {
+            SleepTrackingView()
+        }
     }
 }
 
