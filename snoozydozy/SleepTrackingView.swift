@@ -252,6 +252,7 @@ struct SleepTrackingView: View {
     @State private var selectedDate: Date = Date()
     @State private var currentTime: Date = Date()
     @StateObject private var sunService = SunriseSunsetService.shared
+    @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     
     // Timer for updating ongoing sleep
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -294,6 +295,13 @@ struct SleepTrackingView: View {
     // Save entries to storage
     private func saveSleepEntries() {
         SleepStorageManager.shared.save(sleepEntries)
+        
+        // Update bedtime reminder notification when sleep data changes
+        if notificationsEnabled {
+            let reminderMinutesBefore = UserDefaults.standard.integer(forKey: "reminderMinutesBefore")
+            let minutesBefore = reminderMinutesBefore > 0 ? reminderMinutesBefore : 60
+            NotificationManager.shared.updateBedtimeReminder(notificationsEnabled: true, minutesBefore: minutesBefore)
+        }
     }
     
     // Load entries from storage

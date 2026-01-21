@@ -439,6 +439,26 @@ class SleepStatisticsCalculator: ObservableObject {
     func hasData(for period: StatisticsView.StatsPeriod) -> Bool {
         return !entries(for: period).isEmpty
     }
+    
+    // Calculate average Einschlafzeit (average evening sleep start time)
+    // Returns (hour, minute) tuple or nil if no data
+    func averageEinschlafzeit() -> (hour: Int, minute: Int)? {
+        // Get sleep time data for the last week
+        let sleepTimeData = sleepTimeData(for: .week)
+        let validData = sleepTimeData.filter { $0.hasData && !$0.isToday }
+        
+        guard !validData.isEmpty else { return nil }
+        
+        // Calculate average time value
+        let totalTimeValue = validData.reduce(0.0) { $0 + $1.timeValue }
+        let averageTimeValue = totalTimeValue / Double(validData.count)
+        
+        // Convert back to hour and minute
+        let hour = Int(averageTimeValue)
+        let minute = Int((averageTimeValue - Double(hour)) * 60)
+        
+        return (hour, minute)
+    }
 }
 
 struct StatisticsView: View {
