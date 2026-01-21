@@ -37,15 +37,16 @@ struct SleepEntry: Identifiable, Codable {
         return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: now) ?? now
     }
     
-    // Convert time to angle for 24-hour clock circle
-    // 12:00 (noon) = top (-90°), 00:00 (midnight) = bottom (90°)
-    // Clock moves clockwise: 12:00 -> 15:00 -> 18:00 -> 21:00 -> 00:00 -> 03:00 -> 06:00 -> 09:00 -> 12:00
+    // Convert time to angle for arc timeline
+    // The arc spans 270° from lower-left (135°) through top (270°) to lower-right (45°/405°)
+    // 00:00 (midnight) = lower-left (135°), 12:00 (noon) = top (270°), 24:00 = lower-right (405°)
+    // This creates a wider horseshoe/U-shape arc representing the day
     static func timeToAngle(hour: Int, minute: Int) -> Double {
         let totalMinutes = Double(hour * 60 + minute)
-        // Map 24 hours to 360 degrees, with 12:00 at top (-90°)
-        // 12:00 = 0° (top), 18:00 = 90° (right), 00:00 = 180° (bottom), 06:00 = 270° (left)
-        let angle = ((totalMinutes - 12 * 60) / (24 * 60)) * 360
-        return angle - 90 // Adjust so 0° points up
+        // Map 24 hours (0-1440 minutes) to 270 degrees of arc (from 135° to 405°)
+        // 00:00 = 135° (lower-left), 12:00 = 270° (top), 24:00 = 405° (lower-right)
+        let angle = 135 + (totalMinutes / (24 * 60)) * 270
+        return angle
     }
     
     var startAngle: Double {
@@ -345,6 +346,8 @@ struct SleepTrackingView: View {
                 // Circular Timeline
                 CircularTimelineWithIndicators(
                     sleepEntries: entriesForSelectedDate,
+                    allSleepEntries: sleepEntries,
+                    selectedDate: selectedDate,
                     currentTime: currentTime,
                     sunTimes: sunService.sunTimes,
                     onEntryTapped: onEntryTapped
@@ -483,12 +486,18 @@ struct SleepTrackingView: View {
     }
 }
 
-// MARK: - Circular Timeline with Indicators
+// MARK: - Arc Timeline with Indicators
 struct CircularTimelineWithIndicators: View {
     let sleepEntries: [SleepEntry]
+    let allSleepEntries: [SleepEntry]  // All entries to calculate night sleep from previous day
+    let selectedDate: Date
     var currentTime: Date = Date()
     var sunTimes: SunTimes = SunTimes.defaultTimes
     var onEntryTapped: ((SleepEntry) -> Void)? = nil
+    
+    // Arc configuration - spans 270° from 135° (lower-left) through 270° (top) to 405° (lower-right)
+    private let arcStartAngle: Double = 135 // Lower-left side (00:00)
+    private let arcEndAngle: Double = 405   // Lower-right side (24:00)
     
     // Check if there's ongoing sleep
     private var ongoingSleep: SleepEntry? {
@@ -507,6 +516,13 @@ struct CircularTimelineWithIndicators: View {
         var calendar = Calendar.current
         calendar.timeZone = TimeZone.current
         return (calendar.component(.hour, from: sunTimes.sunset), calendar.component(.minute, from: sunTimes.sunset))
+    }
+    
+    // Get current time components (local timezone)
+    private var currentTimeComponents: (hour: Int, minute: Int) {
+        var calendar = Calendar.current
+        calendar.timeZone = TimeZone.current
+        return (calendar.component(.hour, from: currentTime), calendar.component(.minute, from: currentTime))
     }
     
     // Format time for display (local timezone)
@@ -540,6 +556,63 @@ struct CircularTimelineWithIndicators: View {
         Int(totalSleepSeconds) % 60
     }
     
+    // Calculate night sleep in seconds
+    // Night sleep = sleep from previous day that ended at 23:59 + sleep from selected day that started at 00:00
+    // This represents the continuous night sleep that spans across midnight
+    private var nightSleepSeconds: TimeInterval {
+        let calendar = Calendar.current
+        var totalNightSleep: TimeInterval = 0
+        
+        // Get the previous day
+        guard let previousDay = calendar.date(byAdding: .day, value: -1, to: selectedDate) else {
+            return 0
+        }
+        
+        // Find sleep from previous day that ended at 23:59 (evening sleep continuing past midnight)
+        for entry in allSleepEntries {
+            guard let endTime = entry.endTime else { continue }
+            
+            // Check if this entry is from the previous day
+            if calendar.isDate(entry.startTime, inSameDayAs: previousDay) {
+                let endHour = calendar.component(.hour, from: endTime)
+                let endMinute = calendar.component(.minute, from: endTime)
+                // Consider it night sleep if it ends at 23:55-23:59
+                if endHour == 23 && endMinute >= 55 {
+                    let duration = endTime.timeIntervalSince(entry.startTime)
+                    totalNightSleep += duration
+                }
+            }
+        }
+        
+        // Find sleep from selected day that started at 00:00 (continuation from night before)
+        for entry in sleepEntries {
+            let startHour = calendar.component(.hour, from: entry.startTime)
+            let startMinute = calendar.component(.minute, from: entry.startTime)
+            // Consider it continuation of night sleep if it starts at 00:00-00:05
+            if startHour == 0 && startMinute <= 5 {
+                let duration = entry.effectiveEndTime.timeIntervalSince(entry.startTime)
+                totalNightSleep += duration
+            }
+        }
+        
+        return totalNightSleep
+    }
+    
+    // Night sleep hours
+    private var nightSleepHours: Int {
+        Int(nightSleepSeconds) / 3600
+    }
+    
+    // Night sleep minutes
+    private var nightSleepMinutes: Int {
+        (Int(nightSleepSeconds) % 3600) / 60
+    }
+    
+    // Check if there's any night sleep
+    private var hasNightSleep: Bool {
+        nightSleepSeconds > 0
+    }
+    
     // Get ongoing sleep duration
     private var ongoingDuration: TimeInterval {
         guard let ongoing = ongoingSleep else { return 0 }
@@ -558,7 +631,7 @@ struct CircularTimelineWithIndicators: View {
         Int(ongoingDuration) % 60
     }
     
-    // Calculate position for a given hour on the 24-hour circle
+    // Calculate position for a given hour on the arc
     private func positionForTime(hour: Int, minute: Int, radius: CGFloat, center: CGPoint) -> CGPoint {
         let angle = SleepEntry.timeToAngle(hour: hour, minute: minute)
         let radians = CGFloat(angle * .pi / 180)
@@ -570,24 +643,37 @@ struct CircularTimelineWithIndicators: View {
     
     var body: some View {
         GeometryReader { geometry in
-            let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            let radius = min(geometry.size.width, geometry.size.height) / 2 - 50
+            // Center point is moved down so the arc sits in the upper portion
+            let centerY = geometry.size.height * 0.65
+            let center = CGPoint(x: geometry.size.width / 2, y: centerY)
+            let radius = min(geometry.size.width, geometry.size.height) / 2 - 30
             
             ZStack {
-                // Outer dotted circle (main timeline)
-                Circle()
-                    .stroke(style: StrokeStyle(lineWidth: 2, dash: [4, 6]))
-                    .foregroundColor(.white.opacity(0.5))
-                    .frame(width: radius * 2, height: radius * 2)
+                // Main arc path (the white dotted line) - from left to right through top
+                Path { path in
+                    path.addArc(
+                        center: center,
+                        radius: radius,
+                        startAngle: .degrees(arcStartAngle),
+                        endAngle: .degrees(arcEndAngle),
+                        clockwise: false
+                    )
+                }
+                .stroke(
+                    Color.white.opacity(0.6),
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [4, 6])
+                )
                 
-                // Small dots around the circle (every 30 minutes)
-                ForEach(0..<48, id: \.self) { index in
-                    let hour = index / 2
-                    let minute = (index % 2) * 30
+                // Hour markers along the arc (every 2 hours = 12 markers)
+                ForEach(0..<13, id: \.self) { index in
+                    let hour = index * 2 // 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24
+                    let position = positionForTime(hour: hour, minute: 0, radius: radius + 15, center: center)
+                    
+                    // Small tick marks
                     Circle()
-                        .fill(Color.white.opacity(0.5))
-                        .frame(width: 3, height: 3)
-                        .position(positionForTime(hour: hour, minute: minute, radius: radius + 20, center: center))
+                        .fill(Color.white.opacity(0.4))
+                        .frame(width: hour % 6 == 0 ? 5 : 3, height: hour % 6 == 0 ? 5 : 3)
+                        .position(position)
                 }
                 
                 // Sleep entries with labels (tappable)
@@ -598,40 +684,25 @@ struct CircularTimelineWithIndicators: View {
                         }
                 }
                 
-                // Center area (darker gradient)
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                Color(red: 0.1, green: 0.1, blue: 0.22),
-                                Color(red: 0.08, green: 0.08, blue: 0.18)
-                            ],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: radius * 0.6
-                        )
-                    )
-                    .frame(width: radius * 1.2, height: radius * 1.2)
-                
-                // Total sleep time in center
+                // Total sleep time display - positioned in center below the arc
                 VStack(spacing: 4) {
                     if ongoingSleep != nil {
                         // Stopwatch display for ongoing sleep
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text(String(format: "%02d", ongoingHours))
-                                .font(.system(size: 36, weight: .bold, design: .monospaced))
+                                .font(.system(size: 42, weight: .bold, design: .monospaced))
                                 .foregroundColor(.white)
                             Text(":")
-                                .font(.system(size: 36, weight: .bold, design: .monospaced))
+                                .font(.system(size: 42, weight: .bold, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.7))
                             Text(String(format: "%02d", ongoingMinutes))
-                                .font(.system(size: 36, weight: .bold, design: .monospaced))
+                                .font(.system(size: 42, weight: .bold, design: .monospaced))
                                 .foregroundColor(.white)
                             Text(":")
-                                .font(.system(size: 36, weight: .bold, design: .monospaced))
+                                .font(.system(size: 42, weight: .bold, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.7))
                             Text(String(format: "%02d", ongoingSeconds))
-                                .font(.system(size: 36, weight: .bold, design: .monospaced))
+                                .font(.system(size: 42, weight: .bold, design: .monospaced))
                                 .foregroundColor(.white)
                         }
                         
@@ -647,33 +718,68 @@ struct CircularTimelineWithIndicators: View {
                         // Normal total sleep display
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text("\(sleepHours)")
-                                .font(.system(size: 36, weight: .bold, design: .rounded))
+                                .font(.system(size: 48, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
                             Text("h")
-                                .font(.system(size: 20, weight: .medium, design: .rounded))
+                                .font(.system(size: 24, weight: .medium, design: .rounded))
                                 .foregroundColor(.white.opacity(0.7))
                             Text("\(sleepMinutes)")
-                                .font(.system(size: 36, weight: .bold, design: .rounded))
+                                .font(.system(size: 48, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
                             Text("min")
-                                .font(.system(size: 20, weight: .medium, design: .rounded))
+                                .font(.system(size: 24, weight: .medium, design: .rounded))
                                 .foregroundColor(.white.opacity(0.7))
                         }
                         
                         Text("Schlaf")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
+                        
+                        // Night sleep display (if any)
+                        if hasNightSleep {
+                            HStack(spacing: 6) {
+                                Image(systemName: "moon.stars.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.indigo.opacity(0.8))
+                                
+                                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                                    Text("\(nightSleepHours)")
+                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .foregroundColor(.white.opacity(0.8))
+                                    Text("h")
+                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .foregroundColor(.white.opacity(0.5))
+                                    Text("\(nightSleepMinutes)")
+                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .foregroundColor(.white.opacity(0.8))
+                                    Text("min")
+                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .foregroundColor(.white.opacity(0.5))
+                                }
+                                
+                                Text("Nachtschlaf")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding(.top, 4)
+                        }
                     }
                 }
-                .position(center)
+                .position(x: geometry.size.width / 2, y: center.y)
                 
-                // Sunrise indicator
+                // Sunrise indicator on the arc
                 SunriseIndicator(time: formatTime(sunTimes.sunrise))
-                    .position(positionForTime(hour: sunriseComponents.hour, minute: sunriseComponents.minute, radius: radius + 10, center: center))
+                    .position(positionForTime(hour: sunriseComponents.hour, minute: sunriseComponents.minute, radius: radius + 25, center: center))
                 
-                // Sunset indicator
+                // Sunset indicator on the arc
                 SunsetIndicator(time: formatTime(sunTimes.sunset))
-                    .position(positionForTime(hour: sunsetComponents.hour, minute: sunsetComponents.minute, radius: radius + 10, center: center))
+                    .position(positionForTime(hour: sunsetComponents.hour, minute: sunsetComponents.minute, radius: radius + 25, center: center))
+                
+                // Current time indicator on the arc (only show if selected day is today)
+                if Calendar.current.isDateInToday(selectedDate) {
+                    CurrentTimeIndicator(time: formatTime(currentTime))
+                        .position(positionForTime(hour: currentTimeComponents.hour, minute: currentTimeComponents.minute, radius: radius + 25, center: center))
+                }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
@@ -688,7 +794,7 @@ struct SleepArcWithLabel: View {
     
     // Color based on whether sleep is ongoing
     private var arcColor: Color {
-        entry.isOngoing ? Color.green.opacity(0.6) : Color(red: 0.35, green: 0.4, blue: 0.6).opacity(0.8)
+        entry.isOngoing ? Color.green.opacity(0.7) : Color(red: 0.35, green: 0.45, blue: 0.65).opacity(0.85)
     }
     
     var body: some View {
@@ -696,7 +802,7 @@ struct SleepArcWithLabel: View {
         let iconPosition = pointOnCircle(angle: midAngle, radius: radius, center: center)
         
         ZStack {
-            // Dashed arc background - drawn on the circle
+            // Solid arc background with gradient - drawn on the arc
             Path { path in
                 path.addArc(
                     center: center,
@@ -708,22 +814,38 @@ struct SleepArcWithLabel: View {
             }
             .stroke(
                 arcColor,
-                style: StrokeStyle(lineWidth: 40, lineCap: .round, dash: [3, 4])
+                style: StrokeStyle(lineWidth: 32, lineCap: .round)
+            )
+            
+            // Subtle highlight on the sleep arc
+            Path { path in
+                path.addArc(
+                    center: center,
+                    radius: radius,
+                    startAngle: .degrees(entry.startAngle),
+                    endAngle: .degrees(entry.endAngle),
+                    clockwise: false
+                )
+            }
+            .stroke(
+                Color.white.opacity(0.1),
+                style: StrokeStyle(lineWidth: 28, lineCap: .round)
             )
             
             // Icon in the middle of the arc
             Image(systemName: entry.isOngoing ? "zzz" : "cloud.moon.fill")
-                .font(.system(size: 20))
+                .font(.system(size: 18))
                 .foregroundColor(.white.opacity(0.9))
                 .position(iconPosition)
             
-            // Time labels - positioned outside the arc
+            // Time label at start - positioned inside/along the arc
             TimeLabel(time: entry.startTimeString)
-                .position(pointOnCircle(angle: entry.startAngle, radius: radius + 30, center: center))
+                .position(pointOnCircle(angle: entry.startAngle, radius: radius - 45, center: center))
             
+            // Time label at end
             if !entry.isOngoing {
                 TimeLabel(time: entry.endTimeString)
-                    .position(pointOnCircle(angle: entry.endAngle, radius: radius + 30, center: center))
+                    .position(pointOnCircle(angle: entry.endAngle, radius: radius - 45, center: center))
             }
         }
     }
@@ -954,20 +1076,21 @@ struct SunriseIndicator: View {
     var time: String = "07:00"
     
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 2) {
+            // Time label above
+            Text(time)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.orange)
+            
             ZStack {
                 Circle()
                     .stroke(Color.orange.opacity(0.8), lineWidth: 2)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 36)
                 
                 Image(systemName: "sunrise.fill")
-                    .font(.system(size: 20))
+                    .font(.system(size: 16))
                     .foregroundColor(.yellow)
             }
-            
-            Text(time)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.orange)
         }
     }
 }
@@ -977,20 +1100,56 @@ struct SunsetIndicator: View {
     var time: String = "19:00"
     
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 2) {
+            // Time label above
+            Text(time)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.orange)
+            
             ZStack {
                 Circle()
                     .stroke(Color.orange.opacity(0.6), style: StrokeStyle(lineWidth: 2, dash: [3, 3]))
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 36)
                 
                 Image(systemName: "sunset.fill")
-                    .font(.system(size: 20))
+                    .font(.system(size: 16))
                     .foregroundColor(.orange)
             }
-            
+        }
+    }
+}
+
+// MARK: - Current Time Indicator
+struct CurrentTimeIndicator: View {
+    var time: String = "12:00"
+    
+    var body: some View {
+        VStack(spacing: 2) {
+            // Time label above
             Text(time)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.orange)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.cyan)
+            
+            ZStack {
+                // Glowing background circle
+                Circle()
+                    .fill(Color.cyan.opacity(0.2))
+                    .frame(width: 42, height: 42)
+                
+                // Main circle with border
+                Circle()
+                    .fill(Color(red: 0.1, green: 0.15, blue: 0.25))
+                    .frame(width: 36, height: 36)
+                
+                Circle()
+                    .stroke(Color.cyan, lineWidth: 2)
+                    .frame(width: 36, height: 36)
+                
+                // Clock icon
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.cyan)
+            }
         }
     }
 }
