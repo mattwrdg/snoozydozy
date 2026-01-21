@@ -331,88 +331,89 @@ struct SleepTrackingView: View {
             StarFieldAnimated()
                 .allowsHitTesting(false)
             
-            VStack(spacing: 0) {
-                // Week Picker
-                WeekPickerView(selectedDate: $selectedDate)
-                    .padding(.top, 10)
-                    .padding(.bottom, 12)
-                
-                // Selected date headline
-                Text(formattedSelectedDate)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.bottom, 16)
-                
-                // Circular Timeline
-                CircularTimelineWithIndicators(
-                    sleepEntries: entriesForSelectedDate,
-                    allSleepEntries: sleepEntries,
-                    selectedDate: selectedDate,
-                    currentTime: currentTime,
-                    sunTimes: sunService.sunTimes,
-                    onEntryTapped: onEntryTapped
-                )
-                    .frame(width: 380, height: 380)
-                
-                // Start/Stop Sleep Button
-                if hasOngoingSleep {
-                    Button(action: endSleep) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "stop.fill")
-                                .font(.system(size: 18, weight: .medium))
-                            Text("Aufwachen")
-                                .font(.system(size: 16, weight: .semibold))
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Week Picker
+                    WeekPickerView(selectedDate: $selectedDate)
+                        .padding(.top, 10)
+                        .padding(.bottom, 8)
+                    
+                    // Selected date headline
+                    Text(formattedSelectedDate)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.bottom, 8)
+                    
+                    // Circular Timeline
+                    CircularTimelineWithIndicators(
+                        sleepEntries: entriesForSelectedDate,
+                        allSleepEntries: sleepEntries,
+                        selectedDate: selectedDate,
+                        currentTime: currentTime,
+                        sunTimes: sunService.sunTimes,
+                        onEntryTapped: onEntryTapped
+                    )
+                    .frame(height: 340)
+                    .padding(.horizontal, 10)
+                    
+                    // Start/Stop Sleep Button
+                    if hasOngoingSleep {
+                        Button(action: endSleep) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "stop.fill")
+                                    .font(.system(size: 18, weight: .medium))
+                                Text("Aufwachen")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(width: 160, height: 50)
+                            .background(
+                                Capsule()
+                                    .fill(Color.red.opacity(0.8))
+                            )
                         }
-                        .foregroundColor(.white)
-                        .frame(width: 160, height: 50)
-                        .background(
-                            Capsule()
-                                .fill(Color.red.opacity(0.8))
-                        )
-                    }
-                    .padding(.top, 20)
-                } else {
-                    Button(action: startSleep) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "moon.fill")
-                                .font(.system(size: 18, weight: .medium))
-                            Text("Einschlafen")
-                                .font(.system(size: 16, weight: .semibold))
+                        .padding(.top, 12)
+                    } else {
+                        Button(action: startSleep) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "moon.fill")
+                                    .font(.system(size: 18, weight: .medium))
+                                Text("Einschlafen")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(width: 160, height: 50)
+                            .background(
+                                Capsule()
+                                    .fill(Color(red: 0.55, green: 0.5, blue: 0.75))
+                            )
                         }
-                        .foregroundColor(.white)
-                        .frame(width: 160, height: 50)
-                        .background(
-                            Capsule()
-                                .fill(Color(red: 0.55, green: 0.5, blue: 0.75))
-                        )
+                        .padding(.top, 12)
                     }
-                    .padding(.top, 20)
-                }
-                
-                // Add manual entry Button
-                Button(action: {
-                    showAddSleep = true
-                }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(width: 56, height: 56)
-                        .background(
-                            Circle()
-                                .fill(Color(red: 0.55, green: 0.5, blue: 0.75))
-                        )
-                }
-                .padding(.top, 15)
-                
-                // Sleep entries list
-                if entriesForSelectedDate.isEmpty {
-                    Text("Keine Schlafeinträge")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
-                        .padding(.top, 20)
-                    Spacer()
-                } else {
-                    ScrollView {
+                    
+                    // Add manual entry Button
+                    Button(action: {
+                        showAddSleep = true
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(width: 56, height: 56)
+                            .background(
+                                Circle()
+                                    .fill(Color(red: 0.55, green: 0.5, blue: 0.75))
+                            )
+                    }
+                    .padding(.top, 12)
+                    
+                    // Sleep entries list
+                    if entriesForSelectedDate.isEmpty {
+                        Text("Keine Schlafeinträge")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                            .padding(.top, 20)
+                            .padding(.bottom, 100)
+                    } else {
                         VStack(spacing: 10) {
                             ForEach(entriesForSelectedDate.sorted(by: { $0.startTime < $1.startTime })) { entry in
                                 SleepEntryRow(entry: entry, currentTime: currentTime)
@@ -423,10 +424,11 @@ struct SleepTrackingView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 15)
-                        .padding(.bottom, 20)
+                        .padding(.bottom, 100) // Space for tab bar
                     }
                 }
             }
+            .scrollIndicators(.hidden)
             .gesture(
                 DragGesture(minimumDistance: 50)
                     .onEnded { value in

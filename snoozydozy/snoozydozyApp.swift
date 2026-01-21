@@ -11,9 +11,7 @@ import SwiftUI
 struct SnoozyDozzyApp: App {
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                SleepTrackingView()
-            }
+            MainTabView()
         }
     }
 }
