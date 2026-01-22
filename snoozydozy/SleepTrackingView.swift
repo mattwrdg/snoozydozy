@@ -65,9 +65,10 @@ struct SleepEntry: Identifiable, Codable {
     
     // Get the time string for display
     var startTimeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: startTime)
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: startTime)
+        let minute = calendar.component(.minute, from: startTime)
+        return String(format: "%02d:%02d", hour, minute)
     }
     
     var endTimeString: String {
@@ -248,11 +249,33 @@ struct SleepTrackingView: View {
     @State private var sleepEntries: [SleepEntry] = []
     @State private var showAddSleep = false
     @State private var showEditSleep = false
+    @State private var showDatePicker = false
     @State private var selectedEntry: SleepEntry? = nil
     @State private var selectedDate: Date = Date()
     @State private var currentTime: Date = Date()
+    @State private var sortOrder: SortOrder = .descending // Default: newest first
     @StateObject private var sunService = SunriseSunsetService.shared
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
+    
+    // Sort order enum
+    enum SortOrder {
+        case ascending
+        case descending
+        
+        var icon: String {
+            switch self {
+            case .ascending: return "arrow.up"
+            case .descending: return "arrow.down"
+            }
+        }
+        
+        var toggle: SortOrder {
+            switch self {
+            case .ascending: return .descending
+            case .descending: return .ascending
+            }
+        }
+    }
     
     // Timer for updating ongoing sleep
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -272,9 +295,40 @@ struct SleepTrackingView: View {
     // Filter entries for selected date
     private var entriesForSelectedDate: [SleepEntry] {
         let calendar = Calendar.current
-        return sleepEntries.filter { entry in
-            calendar.isDate(entry.startTime, inSameDayAs: selectedDate)
+        guard let previousDay = calendar.date(byAdding: .day, value: -1, to: selectedDate) else {
+            return sleepEntries.filter { entry in
+                calendar.isDate(entry.startTime, inSameDayAs: selectedDate)
+            }
         }
+        
+        return sleepEntries.filter { entry in
+            // Include entries that start on the selected date
+            if calendar.isDate(entry.startTime, inSameDayAs: selectedDate) {
+                return true
+            }
+            
+            // Include entries that start on the previous day but end on the selected date
+            if calendar.isDate(entry.startTime, inSameDayAs: previousDay) {
+                if let endTime = entry.endTime {
+                    return calendar.isDate(endTime, inSameDayAs: selectedDate)
+                }
+            }
+            
+            return false
+        }
+    }
+    
+    // Sorted entries for selected date
+    private var sortedEntriesForSelectedDate: [SleepEntry] {
+        let sorted = entriesForSelectedDate.sorted { entry1, entry2 in
+            switch sortOrder {
+            case .ascending:
+                return entry1.startTime < entry2.startTime
+            case .descending:
+                return entry1.startTime > entry2.startTime
+            }
+        }
+        return sorted
     }
     
     // Start a new sleep
@@ -344,13 +398,18 @@ struct SleepTrackingView: View {
                     // Week Picker
                     WeekPickerView(selectedDate: $selectedDate)
                         .padding(.top, 10)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, 0)
                     
-                    // Selected date headline
-                    Text(formattedSelectedDate)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.bottom, 8)
+                    // Selected date headline - clickable date picker
+                    Button(action: {
+                        showDatePicker = true
+                    }) {
+                        Text(formattedSelectedDate)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
                     
                     // Circular Timeline
                     CircularTimelineWithIndicators(
@@ -364,55 +423,60 @@ struct SleepTrackingView: View {
                     .frame(height: 340)
                     .padding(.horizontal, 10)
                     
-                    // Start/Stop Sleep Button
-                    if hasOngoingSleep {
-                        Button(action: endSleep) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "stop.fill")
-                                    .font(.system(size: 18, weight: .medium))
-                                Text("Aufwachen")
-                                    .font(.system(size: 16, weight: .semibold))
+                    // Action buttons group
+                    HStack(spacing: 16) {
+                        if hasOngoingSleep {
+                            // Stop sleep button - full width when active
+                            Button(action: endSleep) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "stop.fill")
+                                        .font(.system(size: 18, weight: .medium))
+                                    Text("Aufgewacht")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.red.opacity(0.8))
+                                )
                             }
-                            .foregroundColor(.white)
-                            .frame(width: 160, height: 50)
-                            .background(
-                                Capsule()
-                                    .fill(Color.red.opacity(0.8))
-                            )
-                        }
-                        .padding(.top, 12)
-                    } else {
-                        Button(action: startSleep) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "moon.fill")
-                                    .font(.system(size: 18, weight: .medium))
-                                Text("Einschlafen")
-                                    .font(.system(size: 16, weight: .semibold))
+                        } else {
+                            // Start sleep button
+                            Button(action: startSleep) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "moon.fill")
+                                        .font(.system(size: 18, weight: .medium))
+                                    Text("Eingeschlafen")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(
+                                    Capsule()
+                                        .fill(Color(red: 0.55, green: 0.5, blue: 0.75))
+                                )
                             }
-                            .foregroundColor(.white)
-                            .frame(width: 160, height: 50)
-                            .background(
-                                Capsule()
-                                    .fill(Color(red: 0.55, green: 0.5, blue: 0.75))
-                            )
+                            
+                            // Add manual entry Button
+                            Button(action: {
+                                showAddSleep = true
+                            }) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 22, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .frame(width: 56, height: 56)
+                                    .background(
+                                        Circle()
+                                            .fill(Color(red: 0.55, green: 0.5, blue: 0.75))
+                                    )
+                            }
                         }
-                        .padding(.top, 12)
                     }
-                    
-                    // Add manual entry Button
-                    Button(action: {
-                        showAddSleep = true
-                    }) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundColor(.white)
-                            .frame(width: 56, height: 56)
-                            .background(
-                                Circle()
-                                    .fill(Color(red: 0.55, green: 0.5, blue: 0.75))
-                            )
-                    }
-                    .padding(.top, 12)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
                     
                     // Sleep entries list
                     if entriesForSelectedDate.isEmpty {
@@ -422,15 +486,42 @@ struct SleepTrackingView: View {
                             .padding(.top, 20)
                             .padding(.bottom, 100)
                     } else {
-                        VStack(spacing: 10) {
-                            ForEach(entriesForSelectedDate.sorted(by: { $0.startTime < $1.startTime })) { entry in
-                                SleepEntryRow(entry: entry, currentTime: currentTime)
-                                    .onTapGesture {
-                                        onEntryTapped(entry)
+                        VStack(spacing: 12) {
+                            // Sort order toggle button
+                            HStack {
+                                Text("Schlafeinträge")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.8))
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        sortOrder = sortOrder.toggle
                                     }
+                                }) {
+                                    Image(systemName: sortOrder.icon)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(.white.opacity(0.7))
+                                        .frame(width: 32, height: 32)
+                                        .background(
+                                            Circle()
+                                                .fill(Color.white.opacity(0.1))
+                                        )
+                                }
                             }
+                            .padding(.horizontal, 20)
+                            
+                            VStack(spacing: 10) {
+                                ForEach(sortedEntriesForSelectedDate) { entry in
+                                    SleepEntryRow(entry: entry, currentTime: currentTime)
+                                        .onTapGesture {
+                                            onEntryTapped(entry)
+                                        }
+                                }
+                            }
+                            .padding(.horizontal, 20)
                         }
-                        .padding(.horizontal, 20)
                         .padding(.top, 15)
                         .padding(.bottom, 100) // Space for tab bar
                     }
@@ -474,6 +565,36 @@ struct SleepTrackingView: View {
         }
         .onReceive(timer) { time in
             currentTime = time
+        }
+        .sheet(isPresented: $showDatePicker) {
+            NavigationView {
+                ZStack {
+                    Color(red: 0.15, green: 0.15, blue: 0.3)
+                        .ignoresSafeArea()
+                    
+                    VStack {
+                        DatePicker("", selection: $selectedDate, displayedComponents: .date)
+                            .datePickerStyle(.graphical)
+                            .accentColor(Color(red: 0.55, green: 0.5, blue: 0.75))
+                            .colorScheme(.dark)
+                            .padding()
+                        
+                        Spacer()
+                    }
+                }
+                .navigationTitle("Datum auswählen")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Fertig") {
+                            showDatePicker = false
+                            sunService.fetchSunTimes(for: selectedDate)
+                        }
+                        .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.75))
+                    }
+                }
+                .toolbarColorScheme(.dark, for: .navigationBar)
+            }
         }
         .sheet(isPresented: $showAddSleep) {
             AddSleepSheet(
@@ -696,83 +817,53 @@ struct CircularTimelineWithIndicators: View {
                 
                 // Total sleep time display - positioned in center below the arc
                 VStack(spacing: 4) {
-                    if ongoingSleep != nil {
-                        // Stopwatch display for ongoing sleep
-                        HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Text(String(format: "%02d", ongoingHours))
-                                .font(.system(size: 42, weight: .bold, design: .monospaced))
-                                .foregroundColor(.white)
-                            Text(":")
-                                .font(.system(size: 42, weight: .bold, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.7))
-                            Text(String(format: "%02d", ongoingMinutes))
-                                .font(.system(size: 42, weight: .bold, design: .monospaced))
-                                .foregroundColor(.white)
-                            Text(":")
-                                .font(.system(size: 42, weight: .bold, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.7))
-                            Text(String(format: "%02d", ongoingSeconds))
-                                .font(.system(size: 42, weight: .bold, design: .monospaced))
-                                .foregroundColor(.white)
-                        }
-                        
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 8, height: 8)
-                            Text("Schläft gerade...")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.white.opacity(0.6))
-                        }
-                    } else {
-                        // Normal total sleep display
-                        HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Text("\(sleepHours)")
-                                .font(.system(size: 48, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                            Text("h")
-                                .font(.system(size: 24, weight: .medium, design: .rounded))
-                                .foregroundColor(.white.opacity(0.7))
-                            Text("\(sleepMinutes)")
-                                .font(.system(size: 48, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                            Text("min")
-                                .font(.system(size: 24, weight: .medium, design: .rounded))
-                                .foregroundColor(.white.opacity(0.7))
-                        }
-                        
-                        Text("Schlaf")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.white.opacity(0.6))
-                        
-                        // Night sleep display (if any)
-                        if hasNightSleep {
-                            HStack(spacing: 6) {
-                                Image(systemName: "moon.stars.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.indigo.opacity(0.8))
-                                
-                                HStack(alignment: .firstTextBaseline, spacing: 1) {
-                                    Text("\(nightSleepHours)")
-                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                        .foregroundColor(.white.opacity(0.8))
-                                    Text("h")
-                                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                                        .foregroundColor(.white.opacity(0.5))
-                                    Text("\(nightSleepMinutes)")
-                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                        .foregroundColor(.white.opacity(0.8))
-                                    Text("min")
-                                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                                        .foregroundColor(.white.opacity(0.5))
-                                }
-                                
-                                Text("Nachtschlaf")
-                                    .font(.system(size: 12, weight: .medium))
+                    // Always show total sleep display (including ongoing sleep)
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(sleepHours)")
+                            .font(.system(size: 48, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                        Text("h")
+                            .font(.system(size: 24, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.7))
+                        Text("\(sleepMinutes)")
+                            .font(.system(size: 48, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                        Text("min")
+                            .font(.system(size: 24, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    
+                    Text("Schlaf")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                    
+                    // Night sleep display (if any)
+                    if hasNightSleep {
+                        HStack(spacing: 6) {
+                            Image(systemName: "moon.stars.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(.indigo.opacity(0.8))
+                            
+                            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                                Text("\(nightSleepHours)")
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.8))
+                                Text("h")
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.5))
+                                Text("\(nightSleepMinutes)")
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.8))
+                                Text("min")
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
                                     .foregroundColor(.white.opacity(0.5))
                             }
-                            .padding(.top, 4)
+                            
+                            Text("Nachtschlaf")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white.opacity(0.5))
                         }
+                        .padding(.top, 4)
                     }
                 }
                 .position(x: geometry.size.width / 2, y: center.y)
@@ -808,39 +899,113 @@ struct SleepArcWithLabel: View {
     }
     
     var body: some View {
-        let midAngle = (entry.startAngle + entry.endAngle) / 2
-        let iconPosition = pointOnCircle(angle: midAngle, radius: radius, center: center)
+        // Handle entries that span midnight (startAngle > endAngle)
+        // For entries starting on previous day, we want to show the full arc from start to end
+        let adjustedStartAngle = entry.startAngle
+        let adjustedEndAngle = entry.endAngle < adjustedStartAngle ? entry.endAngle + 360 : entry.endAngle
+        
+        let midAngle = (adjustedStartAngle + adjustedEndAngle) / 2
+        // Normalize midAngle to be within 0-360 range for positioning
+        let normalizedMidAngle = midAngle.truncatingRemainder(dividingBy: 360)
+        let iconPosition = pointOnCircle(angle: normalizedMidAngle, radius: radius, center: center)
         
         ZStack {
             // Solid arc background with gradient - drawn on the arc
-            Path { path in
-                path.addArc(
-                    center: center,
-                    radius: radius,
-                    startAngle: .degrees(entry.startAngle),
-                    endAngle: .degrees(entry.endAngle),
-                    clockwise: false
+            // If entry spans midnight (startAngle > endAngle), draw from start to 405° then from 135° to end
+            if entry.startAngle > entry.endAngle {
+                // Entry spans midnight - draw two arcs
+                // First arc: from start to end of day (405°)
+                Path { path in
+                    path.addArc(
+                        center: center,
+                        radius: radius,
+                        startAngle: .degrees(entry.startAngle),
+                        endAngle: .degrees(405),
+                        clockwise: false
+                    )
+                }
+                .stroke(
+                    arcColor,
+                    style: StrokeStyle(lineWidth: 32, lineCap: .round)
+                )
+                
+                // Second arc: from start of day (135°) to end
+                Path { path in
+                    path.addArc(
+                        center: center,
+                        radius: radius,
+                        startAngle: .degrees(135),
+                        endAngle: .degrees(entry.endAngle),
+                        clockwise: false
+                    )
+                }
+                .stroke(
+                    arcColor,
+                    style: StrokeStyle(lineWidth: 32, lineCap: .round)
+                )
+            } else {
+                // Normal entry within same day
+                Path { path in
+                    path.addArc(
+                        center: center,
+                        radius: radius,
+                        startAngle: .degrees(entry.startAngle),
+                        endAngle: .degrees(entry.endAngle),
+                        clockwise: false
+                    )
+                }
+                .stroke(
+                    arcColor,
+                    style: StrokeStyle(lineWidth: 32, lineCap: .round)
                 )
             }
-            .stroke(
-                arcColor,
-                style: StrokeStyle(lineWidth: 32, lineCap: .round)
-            )
             
             // Subtle highlight on the sleep arc
-            Path { path in
-                path.addArc(
-                    center: center,
-                    radius: radius,
-                    startAngle: .degrees(entry.startAngle),
-                    endAngle: .degrees(entry.endAngle),
-                    clockwise: false
+            if entry.startAngle > entry.endAngle {
+                // Entry spans midnight - draw two highlight arcs
+                Path { path in
+                    path.addArc(
+                        center: center,
+                        radius: radius,
+                        startAngle: .degrees(entry.startAngle),
+                        endAngle: .degrees(405),
+                        clockwise: false
+                    )
+                }
+                .stroke(
+                    Color.white.opacity(0.1),
+                    style: StrokeStyle(lineWidth: 28, lineCap: .round)
+                )
+                
+                Path { path in
+                    path.addArc(
+                        center: center,
+                        radius: radius,
+                        startAngle: .degrees(135),
+                        endAngle: .degrees(entry.endAngle),
+                        clockwise: false
+                    )
+                }
+                .stroke(
+                    Color.white.opacity(0.1),
+                    style: StrokeStyle(lineWidth: 28, lineCap: .round)
+                )
+            } else {
+                // Normal entry within same day
+                Path { path in
+                    path.addArc(
+                        center: center,
+                        radius: radius,
+                        startAngle: .degrees(entry.startAngle),
+                        endAngle: .degrees(entry.endAngle),
+                        clockwise: false
+                    )
+                }
+                .stroke(
+                    Color.white.opacity(0.1),
+                    style: StrokeStyle(lineWidth: 28, lineCap: .round)
                 )
             }
-            .stroke(
-                Color.white.opacity(0.1),
-                style: StrokeStyle(lineWidth: 28, lineCap: .round)
-            )
             
             // Icon in the middle of the arc
             Image(systemName: entry.isOngoing ? "zzz" : "cloud.moon.fill")
@@ -848,11 +1013,11 @@ struct SleepArcWithLabel: View {
                 .foregroundColor(.white.opacity(0.9))
                 .position(iconPosition)
             
-            // Time label at start - positioned inside/along the arc
+            // Time labels - always show start time
             TimeLabel(time: entry.startTimeString)
                 .position(pointOnCircle(angle: entry.startAngle, radius: radius - 45, center: center))
             
-            // Time label at end
+            // Time labels - show end time if not ongoing
             if !entry.isOngoing {
                 TimeLabel(time: entry.endTimeString)
                     .position(pointOnCircle(angle: entry.endAngle, radius: radius - 45, center: center))
