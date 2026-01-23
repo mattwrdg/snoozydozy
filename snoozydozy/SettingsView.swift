@@ -10,7 +10,6 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("reminderMinutesBefore") private var reminderMinutesBefore = 60
-    @State private var hapticFeedback = true
     @State private var isTimePickerExpanded = false
     @StateObject private var calculator = SleepStatisticsCalculator()
     
@@ -90,15 +89,6 @@ struct SettingsView: View {
                         .padding(.bottom, 24)
                     
                     VStack(spacing: 20) {
-                        // Baby Profile Section
-                        SettingsSection(title: "Baby-Profil") {
-                            SettingsRow(icon: "person.fill", iconColor: .pink, title: "Mobi") {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.3))
-                            }
-                        }
-                        
                         // Notifications Section
                         SettingsSection(title: "Benachrichtigungen") {
                             SettingsToggleRow(
@@ -250,16 +240,6 @@ struct SettingsView: View {
                         
                         // App Settings Section
                         SettingsSection(title: "App") {
-                            SettingsToggleRow(
-                                icon: "hand.tap.fill",
-                                iconColor: .cyan,
-                                title: "Haptisches Feedback",
-                                isOn: $hapticFeedback
-                            )
-                            
-                            Divider()
-                                .background(Color.white.opacity(0.1))
-                            
                             SettingsRow(icon: "paintbrush.fill", iconColor: .purple, title: "Design") {
                                 HStack(spacing: 6) {
                                     Text("Dunkel")

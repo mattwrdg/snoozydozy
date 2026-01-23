@@ -13,6 +13,7 @@ struct MainTabView: View {
     enum Tab {
         case sleep
         case statistics
+        case babyProfile
         case settings
     }
     
@@ -25,6 +26,8 @@ struct MainTabView: View {
                     SleepTrackingView()
                 case .statistics:
                     StatisticsView()
+                case .babyProfile:
+                    BabyProfileView()
                 case .settings:
                     SettingsView()
                 }
@@ -68,6 +71,14 @@ struct CustomTabBar: View {
                     isSelected: selectedTab == .statistics
                 ) {
                     selectedTab = .statistics
+                }
+                
+                TabBarButton(
+                    icon: "person.fill",
+                    title: "Baby Profil",
+                    isSelected: selectedTab == .babyProfile
+                ) {
+                    selectedTab = .babyProfile
                 }
                 
                 TabBarButton(
