@@ -340,10 +340,46 @@ struct SleepTrackingView: View {
     
     // End the ongoing sleep
     private func endSleep() {
-        if let index = sleepEntries.firstIndex(where: { $0.isOngoing }) {
-            sleepEntries[index].endTime = Date()
-            saveSleepEntries()
+        guard let index = sleepEntries.firstIndex(where: { $0.isOngoing }) else {
+            return
         }
+        
+        let ongoingEntry = sleepEntries[index]
+        let endTime = Date()
+        let calendar = Calendar.current
+        
+        // Check if sleep crosses midnight (start time and end time are on different days)
+        if !calendar.isDate(ongoingEntry.startTime, inSameDayAs: endTime) {
+            // Sleep crosses midnight - split into two entries
+            
+            // Entry 1: Start time to 23:59:59 on the start day
+            var endOfDayComponents = calendar.dateComponents([.year, .month, .day], from: ongoingEntry.startTime)
+            endOfDayComponents.hour = 23
+            endOfDayComponents.minute = 59
+            endOfDayComponents.second = 59
+            if let endOfDay = calendar.date(from: endOfDayComponents) {
+                let entry1 = SleepEntry(startTime: ongoingEntry.startTime, endTime: endOfDay)
+                sleepEntries[index] = entry1
+            }
+            
+            // Entry 2: 00:00:00 to end time on the next day
+            if let nextDay = calendar.date(byAdding: .day, value: 1, to: ongoingEntry.startTime) {
+                var startOfNextDayComponents = calendar.dateComponents([.year, .month, .day], from: nextDay)
+                startOfNextDayComponents.hour = 0
+                startOfNextDayComponents.minute = 0
+                startOfNextDayComponents.second = 0
+                
+                if let startOfNextDay = calendar.date(from: startOfNextDayComponents) {
+                    let entry2 = SleepEntry(startTime: startOfNextDay, endTime: endTime)
+                    sleepEntries.append(entry2)
+                }
+            }
+        } else {
+            // Normal entry within same day
+            sleepEntries[index].endTime = endTime
+        }
+        
+        saveSleepEntries()
     }
     
     // Save entries to storage
@@ -565,6 +601,43 @@ struct SleepTrackingView: View {
         }
         .onReceive(timer) { time in
             currentTime = time
+            
+            // Automatically split ongoing sleeps that cross midnight
+            let calendar = Calendar.current
+            if let index = sleepEntries.firstIndex(where: { $0.isOngoing }) {
+                let ongoingEntry = sleepEntries[index]
+                // Check if we've crossed midnight since the sleep started
+                // Only split if the start time is on a previous day (not today)
+                if calendar.isDate(ongoingEntry.startTime, inSameDayAs: time) == false {
+                    // Verify the start time is actually before today (to avoid splitting multiple times)
+                    if ongoingEntry.startTime < calendar.startOfDay(for: time) {
+                        // Sleep has crossed midnight - split it
+                        // Entry 1: Start time to 23:59:59 on the start day
+                        var endOfDayComponents = calendar.dateComponents([.year, .month, .day], from: ongoingEntry.startTime)
+                        endOfDayComponents.hour = 23
+                        endOfDayComponents.minute = 59
+                        endOfDayComponents.second = 59
+                        if let endOfDay = calendar.date(from: endOfDayComponents) {
+                            let entry1 = SleepEntry(startTime: ongoingEntry.startTime, endTime: endOfDay)
+                            sleepEntries[index] = entry1
+                        }
+                        
+                        // Entry 2: 00:00:00 on the next day (still ongoing)
+                        if let nextDay = calendar.date(byAdding: .day, value: 1, to: ongoingEntry.startTime) {
+                            var startOfNextDayComponents = calendar.dateComponents([.year, .month, .day], from: nextDay)
+                            startOfNextDayComponents.hour = 0
+                            startOfNextDayComponents.minute = 0
+                            startOfNextDayComponents.second = 0
+                            
+                            if let startOfNextDay = calendar.date(from: startOfNextDayComponents) {
+                                let entry2 = SleepEntry(startTime: startOfNextDay, endTime: nil)
+                                sleepEntries.append(entry2)
+                                saveSleepEntries()
+                            }
+                        }
+                    }
+                }
+            }
         }
         .sheet(isPresented: $showDatePicker) {
             NavigationView {
