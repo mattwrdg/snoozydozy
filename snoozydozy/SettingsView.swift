@@ -6,12 +6,23 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("reminderMinutesBefore") private var reminderMinutesBefore = 60
     @State private var isTimePickerExpanded = false
     @StateObject private var calculator = SleepStatisticsCalculator()
+    @State private var showShareSheet = false
+    @State private var exportFileURL: URL?
+    @State private var showExportError = false
+    @State private var exportErrorMessage = ""
+    @State private var showFileImporter = false
+    @State private var showImportConfirmation = false
+    @State private var importFileURL: URL?
+    @State private var showImportError = false
+    @State private var importErrorMessage = ""
+    @State private var showImportSuccess = false
     
     private var notificationManager: NotificationManager {
         NotificationManager.shared
@@ -252,6 +263,34 @@ struct SettingsView: View {
                             }
                         }
                         
+                        // Data Export/Import Section
+                        SettingsSection(title: "Daten") {
+                            Button(action: {
+                                exportData()
+                            }) {
+                                SettingsRow(icon: "square.and.arrow.up.fill", iconColor: .green, title: "Daten exportieren") {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.3))
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            Divider()
+                                .background(Color.white.opacity(0.1))
+                            
+                            Button(action: {
+                                showFileImporter = true
+                            }) {
+                                SettingsRow(icon: "square.and.arrow.down.fill", iconColor: .blue, title: "Daten importieren") {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.3))
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        
                         // About Section
                         SettingsSection(title: "Über") {
                             SettingsRow(icon: "info.circle.fill", iconColor: .blue, title: "Version") {
@@ -293,6 +332,92 @@ struct SettingsView: View {
         }
         .onAppear {
             calculator.loadEntries()
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let fileURL = exportFileURL {
+                ShareSheet(activityItems: [fileURL])
+            }
+        }
+        .alert("Export Fehler", isPresented: $showExportError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(exportErrorMessage)
+        }
+        .fileImporter(
+            isPresented: $showFileImporter,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    importFileURL = url
+                    showImportConfirmation = true
+                }
+            case .failure(let error):
+                importErrorMessage = "Fehler beim Auswählen der Datei: \(error.localizedDescription)"
+                showImportError = true
+            }
+        }
+        .alert("Daten importieren", isPresented: $showImportConfirmation) {
+            Button("Abbrechen", role: .cancel) { }
+            Button("Importieren") {
+                importData()
+            }
+        } message: {
+            Text("Möchten Sie wirklich alle aktuellen Daten durch die importierten Daten ersetzen? Diese Aktion kann nicht rückgängig gemacht werden.")
+        }
+        .alert("Import Fehler", isPresented: $showImportError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(importErrorMessage)
+        }
+        .alert("Import erfolgreich", isPresented: $showImportSuccess) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Die Daten wurden erfolgreich importiert.")
+        }
+    }
+    
+    // Export data function
+    private func exportData() {
+        do {
+            let fileURL = try DataExportManager.shared.exportToJSON()
+            exportFileURL = fileURL
+            showShareSheet = true
+        } catch {
+            exportErrorMessage = "Fehler beim Exportieren der Daten: \(error.localizedDescription)"
+            showExportError = true
+        }
+    }
+    
+    // Import data function
+    private func importData() {
+        guard let fileURL = importFileURL else {
+            importErrorMessage = "Keine Datei ausgewählt"
+            showImportError = true
+            return
+        }
+        
+        // Need to access security-scoped resource
+        guard fileURL.startAccessingSecurityScopedResource() else {
+            importErrorMessage = "Kein Zugriff auf die Datei"
+            showImportError = true
+            return
+        }
+        
+        defer {
+            fileURL.stopAccessingSecurityScopedResource()
+        }
+        
+        do {
+            try DataExportManager.shared.importFromJSON(url: fileURL)
+            showImportSuccess = true
+            // Reload calculator to reflect imported data
+            calculator.loadEntries()
+        } catch {
+            importErrorMessage = "Fehler beim Importieren der Daten: \(error.localizedDescription)"
+            showImportError = true
         }
     }
     
@@ -406,6 +531,23 @@ struct SettingsToggleRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+}
+
+// MARK: - Share Sheet
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: nil
+        )
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+        // No update needed
     }
 }
 
