@@ -72,27 +72,29 @@ struct SleepEntry: Identifiable, Codable {
     }
     
     var endTimeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: effectiveEndTime)
+        AppDateFormatters.timeOnly.string(from: effectiveEndTime)
     }
 }
 
 // MARK: - Sleep Storage Manager
 class SleepStorageManager {
     static let shared = SleepStorageManager()
-    private let storageKey = "sleepEntries"
     
     private init() {}
     
     func save(_ entries: [SleepEntry]) {
-        if let encoded = try? JSONEncoder().encode(entries) {
-            UserDefaults.standard.set(encoded, forKey: storageKey)
+        do {
+            let encoded = try JSONEncoder().encode(entries)
+            UserDefaults.standard.set(encoded, forKey: StorageKeys.sleepEntries)
+        } catch {
+            #if DEBUG
+            print("Error saving sleep entries: \(error.localizedDescription)")
+            #endif
         }
     }
     
     func load() -> [SleepEntry] {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
+        guard let data = UserDefaults.standard.data(forKey: StorageKeys.sleepEntries),
               let entries = try? JSONDecoder().decode([SleepEntry].self, from: data) else {
             return []
         }
@@ -159,10 +161,11 @@ class SunriseSunsetService: ObservableObject {
         // Use tzid parameter to get local time directly
         let urlString = "https://api.sunrise-sunset.org/json?lat=\(latitude)&lng=\(longitude)&date=\(dateString)&formatted=0&tzid=\(timezone)"
         
-        print("Fetching sun times from: \(urlString)")
-        
         guard let url = URL(string: urlString) else {
             isLoading = false
+            #if DEBUG
+            print("Invalid URL for sun times API")
+            #endif
             return
         }
         
@@ -171,20 +174,23 @@ class SunriseSunsetService: ObservableObject {
                 self?.isLoading = false
                 
                 guard let data = data, error == nil else {
+                    #if DEBUG
                     print("Error fetching sun times: \(error?.localizedDescription ?? "Unknown error")")
+                    #endif
                     return
                 }
                 
-                // Debug: Print raw response
-                if let jsonString = String(data: data, encoding: .utf8) {
-                    print("API Response: \(jsonString)")
+                // Validate HTTP response
+                if let httpResponse = response as? HTTPURLResponse,
+                   httpResponse.statusCode != 200 {
+                    #if DEBUG
+                    print("Sun times API returned status code: \(httpResponse.statusCode)")
+                    #endif
+                    return
                 }
                 
                 do {
                     let response = try JSONDecoder().decode(SunriseSunsetResponse.self, from: data)
-                    print("Status: \(response.status)")
-                    print("Sunrise string: \(response.results.sunrise)")
-                    print("Sunset string: \(response.results.sunset)")
                     
                     if response.status == "OK" {
                         // Parse ISO 8601 dates
@@ -211,19 +217,19 @@ class SunriseSunsetService: ObservableObject {
                             sunsetDate = customFormatter.date(from: response.results.sunset)
                         }
                         
-                        print("Parsed sunrise: \(String(describing: sunriseDate))")
-                        print("Parsed sunset: \(String(describing: sunsetDate))")
-                        
                         if let sunrise = sunriseDate, let sunset = sunsetDate {
                             self?.sunTimes = SunTimes(sunrise: sunrise, sunset: sunset)
                             self?.cachedDate = date
-                            print("Successfully updated sun times!")
                         } else {
-                            print("Failed to parse dates")
+                            #if DEBUG
+                            print("Failed to parse sun times dates")
+                            #endif
                         }
                     }
                 } catch {
-                    print("Error decoding sun times: \(error)")
+                    #if DEBUG
+                    print("Error decoding sun times: \(error.localizedDescription)")
+                    #endif
                 }
             }
         }.resume()
@@ -231,10 +237,7 @@ class SunriseSunsetService: ObservableObject {
     
     // Format time for display (using local timezone)
     func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        formatter.timeZone = TimeZone.current
-        return formatter.string(from: date)
+        return AppDateFormatters.timeOnly.string(from: date)
     }
     
     // Get hour and minute components (using local timezone)
@@ -281,10 +284,7 @@ struct SleepTrackingView: View {
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     private var formattedSelectedDate: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "de_DE")
-        formatter.dateFormat = "EEEE, d. MMMM"
-        return formatter.string(from: selectedDate)
+        AppDateFormatters.dateFull.string(from: selectedDate)
     }
     
     // Check if there's an ongoing sleep
@@ -388,7 +388,7 @@ struct SleepTrackingView: View {
         
         // Update bedtime reminder notification when sleep data changes
         if notificationsEnabled {
-            let reminderMinutesBefore = UserDefaults.standard.integer(forKey: "reminderMinutesBefore")
+            let reminderMinutesBefore = UserDefaults.standard.integer(forKey: StorageKeys.reminderMinutesBefore)
             let minutesBefore = reminderMinutesBefore > 0 ? reminderMinutesBefore : 60
             NotificationManager.shared.updateBedtimeReminder(notificationsEnabled: true, minutesBefore: minutesBefore)
         }
@@ -422,7 +422,7 @@ struct SleepTrackingView: View {
     var body: some View {
         ZStack {
             // Sternenhimmel-Hintergrund
-            Color(red: 0.08, green: 0.08, blue: 0.18)
+            AppColors.backgroundDark
                 .ignoresSafeArea()
             
             // Sterne
@@ -492,7 +492,7 @@ struct SleepTrackingView: View {
                                 .frame(height: 56)
                                 .background(
                                     Capsule()
-                                        .fill(Color(red: 0.55, green: 0.5, blue: 0.75))
+                                        .fill(AppColors.accentSecondary)
                                 )
                             }
                             
@@ -506,7 +506,7 @@ struct SleepTrackingView: View {
                                     .frame(width: 56, height: 56)
                                     .background(
                                         Circle()
-                                            .fill(Color(red: 0.55, green: 0.5, blue: 0.75))
+                                            .fill(AppColors.accentSecondary)
                                     )
                             }
                         }
@@ -642,13 +642,13 @@ struct SleepTrackingView: View {
         .sheet(isPresented: $showDatePicker) {
             NavigationView {
                 ZStack {
-                    Color(red: 0.15, green: 0.15, blue: 0.3)
+                    AppColors.backgroundMedium
                         .ignoresSafeArea()
                     
                     VStack {
                         DatePicker("", selection: $selectedDate, displayedComponents: .date)
                             .datePickerStyle(.graphical)
-                            .accentColor(Color(red: 0.55, green: 0.5, blue: 0.75))
+                            .accentColor(AppColors.accentSecondary)
                             .colorScheme(.dark)
                             .padding()
                         
@@ -663,7 +663,7 @@ struct SleepTrackingView: View {
                             showDatePicker = false
                             sunService.fetchSunTimes(for: selectedDate)
                         }
-                        .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.75))
+                        .foregroundColor(AppColors.accentSecondary)
                     }
                 }
                 .toolbarColorScheme(.dark, for: .navigationBar)
@@ -1208,7 +1208,7 @@ struct SleepEntryRow: View {
         .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(Color(red: 0.15, green: 0.15, blue: 0.28))
+                .fill(AppColors.backgroundCard)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -1241,16 +1241,11 @@ struct WeekPickerView: View {
     }
     
     private func dayLetter(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "de_DE")
-        formatter.dateFormat = "EEEEE" // Single letter day
-        return formatter.string(from: date)
+        AppDateFormatters.dayLetter.string(from: date)
     }
     
     private func dayNumber(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d"
-        return formatter.string(from: date)
+        AppDateFormatters.dayNumber.string(from: date)
     }
     
     private func isSelected(_ date: Date) -> Bool {
@@ -1297,7 +1292,7 @@ struct WeekPickerView: View {
                         .frame(width: 38, height: 55)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(isSelected(date) ? Color(red: 0.55, green: 0.5, blue: 0.75) : Color.clear)
+                                .fill(isSelected(date) ? AppColors.accentSecondary : Color.clear)
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
@@ -1492,7 +1487,7 @@ struct AddSleepSheet: View {
                             .labelsHidden()
                             .colorScheme(.dark)
                             .frame(maxWidth: .infinity)
-                            .background(Color(red: 0.25, green: 0.2, blue: 0.35))
+                            .background(AppColors.backgroundCardLight)
                             .cornerRadius(12)
                     }
                     
@@ -1507,7 +1502,7 @@ struct AddSleepSheet: View {
                             .labelsHidden()
                             .colorScheme(.dark)
                             .frame(maxWidth: .infinity)
-                            .background(Color(red: 0.25, green: 0.2, blue: 0.35))
+                            .background(AppColors.backgroundCardLight)
                             .cornerRadius(12)
                     }
                     
@@ -1636,7 +1631,7 @@ struct EditSleepSheet: View {
                             .labelsHidden()
                             .colorScheme(.dark)
                             .frame(maxWidth: .infinity)
-                            .background(Color(red: 0.25, green: 0.2, blue: 0.35))
+                            .background(AppColors.backgroundCardLight)
                             .cornerRadius(12)
                     }
                     
@@ -1652,7 +1647,7 @@ struct EditSleepSheet: View {
                                 .labelsHidden()
                                 .colorScheme(.dark)
                                 .frame(maxWidth: .infinity)
-                                .background(Color(red: 0.25, green: 0.2, blue: 0.35))
+                                .background(AppColors.backgroundCardLight)
                                 .cornerRadius(12)
                         }
                     } else {

@@ -8,8 +8,8 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("notificationsEnabled") private var notificationsEnabled = false
-    @AppStorage("reminderMinutesBefore") private var reminderMinutesBefore = 60
+    @AppStorage(StorageKeys.notificationsEnabled) private var notificationsEnabled = false
+    @AppStorage(StorageKeys.reminderMinutesBefore) private var reminderMinutesBefore = 60
     @State private var isTimePickerExpanded = false
     @StateObject private var calculator = SleepStatisticsCalculator()
     
@@ -70,16 +70,17 @@ struct SettingsView: View {
     }
     
     var body: some View {
-        ZStack {
-            // Background
-            Color(red: 0.08, green: 0.08, blue: 0.18)
-                .ignoresSafeArea()
-            
-            // Stars
-            StarFieldAnimated()
-                .allowsHitTesting(false)
-            
-            ScrollView {
+        NavigationStack {
+            ZStack {
+                // Background
+                AppColors.backgroundDark
+                    .ignoresSafeArea()
+                
+                // Stars
+                StarFieldAnimated()
+                    .allowsHitTesting(false)
+                
+                ScrollView {
                 VStack(spacing: 0) {
                     // Header
                     Text("Einstellungen")
@@ -200,7 +201,7 @@ struct SettingsView: View {
                                                     .foregroundColor(.white)
                                                     .frame(maxWidth: .infinity)
                                                     .padding(.vertical, 12)
-                                                    .background(Color(red: 0.55, green: 0.5, blue: 0.75))
+                                                    .background(AppColors.accentSecondary)
                                                     .cornerRadius(12)
                                             }
                                         }
@@ -238,20 +239,6 @@ struct SettingsView: View {
                             }
                         }
                         
-                        // App Settings Section
-                        SettingsSection(title: "App") {
-                            SettingsRow(icon: "paintbrush.fill", iconColor: .purple, title: "Design") {
-                                HStack(spacing: 6) {
-                                    Text("Dunkel")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.white.opacity(0.5))
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.white.opacity(0.3))
-                                }
-                            }
-                        }
-                        
                         // About Section
                         SettingsSection(title: "Über") {
                             SettingsRow(icon: "info.circle.fill", iconColor: .blue, title: "Version") {
@@ -263,19 +250,34 @@ struct SettingsView: View {
                             Divider()
                                 .background(Color.white.opacity(0.1))
                             
-                            SettingsRow(icon: "doc.text.fill", iconColor: .gray, title: "Datenschutz") {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.3))
+                            NavigationLink(destination: TermsAndConditionsView()) {
+                                SettingsRow(icon: "doc.text.fill", iconColor: .blue, title: "Geschäftsbedingungen") {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.3))
+                                }
                             }
                             
                             Divider()
                                 .background(Color.white.opacity(0.1))
                             
-                            SettingsRow(icon: "heart.fill", iconColor: .red, title: "App bewerten") {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.3))
+                            NavigationLink(destination: PrivacyPolicyView()) {
+                                SettingsRow(icon: "lock.shield.fill", iconColor: .green, title: "Datenschutzerklärung") {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.3))
+                                }
+                            }
+                            
+                            Divider()
+                                .background(Color.white.opacity(0.1))
+                            
+                            NavigationLink(destination: DisclaimerView()) {
+                                SettingsRow(icon: "exclamationmark.triangle.fill", iconColor: .orange, title: "Haftungsausschluss") {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.3))
+                                }
                             }
                         }
                         
@@ -288,11 +290,12 @@ struct SettingsView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 100) // Space for tab bar
                 }
+                }
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
-        }
-        .onAppear {
-            calculator.loadEntries()
+            .onAppear {
+                calculator.loadEntries()
+            }
         }
     }
     
@@ -332,7 +335,7 @@ struct SettingsSection<Content: View>: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 14)
-                    .fill(Color(red: 0.15, green: 0.15, blue: 0.28))
+                    .fill(AppColors.backgroundCard)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
@@ -402,7 +405,7 @@ struct SettingsToggleRow: View {
             
             Toggle("", isOn: $isOn)
                 .labelsHidden()
-                .tint(Color(red: 0.55, green: 0.5, blue: 0.75))
+                .tint(AppColors.accentSecondary)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

@@ -16,8 +16,8 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "391D94802F1FAB0B00C8A8B4"
-               BuildableName = "snoozy dozzy.app"
-               BlueprintName = "snoozy dozzy"
+               BuildableName = "snoozy dozy.app"
+               BlueprintName = "snoozy dozy"
                ReferencedContainer = "container:snoozydozy.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -45,8 +45,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "391D94802F1FAB0B00C8A8B4"
-            BuildableName = "snoozy dozzy.app"
-            BlueprintName = "snoozy dozzy"
+            BuildableName = "snoozy dozy.app"
+            BlueprintName = "snoozy dozy"
             ReferencedContainer = "container:snoozydozy.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -62,8 +62,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "391D94802F1FAB0B00C8A8B4"
-            BuildableName = "snoozy dozzy.app"
-            BlueprintName = "snoozy dozzy"
+            BuildableName = "snoozy dozy.app"
+            BlueprintName = "snoozy dozy"
             ReferencedContainer = "container:snoozydozy.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

@@ -8,9 +8,9 @@
 import SwiftUI
 
 @main
-struct SnoozyDozzyApp: App {
-    @AppStorage("notificationsEnabled") private var notificationsEnabled = false
-    @AppStorage("reminderMinutesBefore") private var reminderMinutesBefore = 60
+struct SnoozyDozyApp: App {
+    @AppStorage(StorageKeys.notificationsEnabled) private var notificationsEnabled = false
+    @AppStorage(StorageKeys.reminderMinutesBefore) private var reminderMinutesBefore = 60
     
     init() {
         // Check notification authorization status on launch

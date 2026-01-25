@@ -507,7 +507,7 @@ struct StatisticsView: View {
     var body: some View {
         ZStack {
             // Background
-            Color(red: 0.08, green: 0.08, blue: 0.18)
+            AppColors.backgroundDark
                 .ignoresSafeArea()
             
             // Stars
@@ -732,7 +732,7 @@ struct StatCard<Content: View>: View {
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(red: 0.15, green: 0.15, blue: 0.28))
+                .fill(AppColors.backgroundCard)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
@@ -781,7 +781,7 @@ struct StatCardSmall: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(Color(red: 0.15, green: 0.15, blue: 0.28))
+                .fill(AppColors.backgroundCard)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -927,7 +927,7 @@ struct SleepDurationChart: View {
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(red: 0.15, green: 0.15, blue: 0.28))
+                .fill(AppColors.backgroundCard)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
@@ -1106,7 +1106,7 @@ struct SleepTimeChart: View {
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(red: 0.15, green: 0.15, blue: 0.28))
+                .fill(AppColors.backgroundCard)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
@@ -1285,7 +1285,7 @@ struct WakeTimeChart: View {
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(red: 0.15, green: 0.15, blue: 0.28))
+                .fill(AppColors.backgroundCard)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)

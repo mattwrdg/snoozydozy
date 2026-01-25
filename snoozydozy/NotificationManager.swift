@@ -40,9 +40,11 @@ class NotificationManager: ObservableObject {
                 completion(granted)
             }
             
+            #if DEBUG
             if let error = error {
                 print("Notification authorization error: \(error.localizedDescription)")
             }
+            #endif
         }
     }
     
@@ -57,7 +59,9 @@ class NotificationManager: ObservableObject {
         cancelBedtimeReminder()
         
         guard isAuthorized else {
+            #if DEBUG
             print("Notifications not authorized")
+            #endif
             return
         }
         
@@ -99,9 +103,12 @@ class NotificationManager: ObservableObject {
         content.sound = .default
         
         // Create a daily trigger at the calculated time
+        // For daily repeating notifications, only specify hour and minute
+        // iOS will automatically repeat this every day
         var dateComponents = DateComponents()
         dateComponents.hour = reminderHour
         dateComponents.minute = reminderMinute
+        // Note: We don't set day, month, or year - this allows it to repeat daily
         
         let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
         
@@ -114,10 +121,39 @@ class NotificationManager: ObservableObject {
         
         // Schedule the notification
         UNUserNotificationCenter.current().add(request) { error in
+            #if DEBUG
             if let error = error {
-                print("Error scheduling notification: \(error.localizedDescription)")
+                print("❌ Error scheduling notification: \(error.localizedDescription)")
             } else {
-                print("Bedtime reminder scheduled for \(String(format: "%02d:%02d", reminderHour, reminderMinute)) (1 hour before average sleep time \(String(format: "%02d:%02d", averageSleepTime.hour, averageSleepTime.minute)))")
+                print("✅ Bedtime reminder scheduled for daily at \(String(format: "%02d:%02d", reminderHour, reminderMinute)) (repeats: true)")
+                // Verify the notification was scheduled correctly
+                Task { @MainActor in
+                    self.verifyScheduledNotification()
+                }
+            }
+            #endif
+        }
+    }
+    
+    /// Verify that the notification was scheduled correctly (for debugging)
+    private func verifyScheduledNotification() {
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            let bedtimeReminder = requests.first { $0.identifier == self.notificationIdentifier }
+            if let reminder = bedtimeReminder,
+               let trigger = reminder.trigger as? UNCalendarNotificationTrigger {
+                #if DEBUG
+                print("📋 Verification - Notification found:")
+                print("   Identifier: \(reminder.identifier)")
+                print("   Title: \(reminder.content.title)")
+                print("   Body: \(reminder.content.body)")
+                print("   Repeats: \(trigger.repeats)")
+                let dateComponents = trigger.dateComponents
+                print("   Time: \(String(format: "%02d:%02d", dateComponents.hour ?? 0, dateComponents.minute ?? 0))")
+                #endif
+            } else {
+                #if DEBUG
+                print("⚠️ Warning: Bedtime reminder notification not found in pending notifications!")
+                #endif
             }
         }
     }
@@ -125,10 +161,10 @@ class NotificationManager: ObservableObject {
     /// Cancel the bedtime reminder notification
     func cancelBedtimeReminder() {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationIdentifier])
-        print("Bedtime reminder cancelled")
     }
     
     /// Update the bedtime reminder based on current settings and sleep data
+    /// Only reschedules if the time has changed to avoid interfering with the daily repeat
     func updateBedtimeReminder(notificationsEnabled: Bool, minutesBefore: Int = 60) {
         if notificationsEnabled && isAuthorized {
             // Calculate average sleep time from stored data
@@ -136,9 +172,48 @@ class NotificationManager: ObservableObject {
             let averageTime = calculator.averageEinschlafzeit()
             
             if let avgTime = averageTime {
-                scheduleBedtimeReminder(averageSleepTime: avgTime, minutesBefore: minutesBefore)
+                // Calculate the reminder time
+                var reminderHour = avgTime.hour
+                var reminderMinute = avgTime.minute - minutesBefore
+                
+                while reminderMinute < 0 {
+                    reminderMinute += 60
+                    reminderHour -= 1
+                }
+                
+                if reminderHour < 0 {
+                    reminderHour += 24
+                }
+                
+                // Check if we need to reschedule by comparing with existing notification
+                UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+                    let existingReminder = requests.first { $0.identifier == self.notificationIdentifier }
+                    
+                    var needsReschedule = true
+                    if let existing = existingReminder,
+                       let trigger = existing.trigger as? UNCalendarNotificationTrigger {
+                        let existingComponents = trigger.dateComponents
+                        if existingComponents.hour == reminderHour &&
+                           existingComponents.minute == reminderMinute &&
+                           trigger.repeats == true {
+                            // Same time and already repeating - no need to reschedule
+                            needsReschedule = false
+                            #if DEBUG
+                            print("ℹ️ Bedtime reminder already scheduled correctly, skipping reschedule")
+                            #endif
+                        }
+                    }
+                    
+                    if needsReschedule {
+                        DispatchQueue.main.async { [weak self] in
+                            self?.scheduleBedtimeReminder(averageSleepTime: avgTime, minutesBefore: minutesBefore)
+                        }
+                    }
+                }
             } else {
+                #if DEBUG
                 print("No sleep data available to calculate average bedtime")
+                #endif
                 cancelBedtimeReminder()
             }
         } else {

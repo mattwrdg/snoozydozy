@@ -16,16 +16,13 @@ struct BabyProfileDetailView: View {
     var hideWeiterButton: Bool = false
     
     private var dateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "dd.MM.yyyy"
-        formatter.locale = Locale(identifier: "de_DE")
-        return formatter
+        AppDateFormatters.dateShort
     }
     
     var body: some View {
         ZStack {
             // Background
-            Color(red: 0.08, green: 0.08, blue: 0.18)
+            AppColors.backgroundDark
                 .ignoresSafeArea()
             
             // Stars
@@ -42,7 +39,7 @@ struct BabyProfileDetailView: View {
                                 .frame(height: 2)
                             
                             Rectangle()
-                                .fill(Color(red: 0.6, green: 0.5, blue: 0.75))
+                                .fill(AppColors.accentPrimary)
                                 .frame(width: geometry.size.width * 0.75, height: 2)
                         }
                     }
@@ -90,7 +87,7 @@ struct BabyProfileDetailView: View {
                                     get: { profileManager.profile.name },
                                     set: { newValue in
                                         var updated = profileManager.profile
-                                        updated.name = newValue
+                                        updated.name = InputValidator.validateName(newValue)
                                         profileManager.profile = updated
                                     }
                                 )
@@ -104,9 +101,11 @@ struct BabyProfileDetailView: View {
                                 date: Binding(
                                     get: { profileManager.profile.birthday },
                                     set: { newValue in
-                                        var updated = profileManager.profile
-                                        updated.birthday = newValue
-                                        profileManager.profile = updated
+                                        if InputValidator.validateBirthday(newValue) {
+                                            var updated = profileManager.profile
+                                            updated.birthday = newValue
+                                            profileManager.profile = updated
+                                        }
                                     }
                                 ),
                                 formatter: dateFormatter,
@@ -153,9 +152,11 @@ struct BabyProfileDetailView: View {
                                 value: Binding(
                                     get: { profileManager.profile.height },
                                     set: { newValue in
-                                        var updated = profileManager.profile
-                                        updated.height = newValue
-                                        profileManager.profile = updated
+                                        if let validated = InputValidator.validateHeight(newValue) {
+                                            var updated = profileManager.profile
+                                            updated.height = validated
+                                            profileManager.profile = updated
+                                        }
                                     }
                                 ),
                                 unit: "cm"
@@ -169,16 +170,18 @@ struct BabyProfileDetailView: View {
                                 value: Binding(
                                     get: { profileManager.profile.weight },
                                     set: { newValue in
-                                        var updated = profileManager.profile
-                                        updated.weight = newValue
-                                        profileManager.profile = updated
+                                        if let validated = InputValidator.validateWeight(newValue) {
+                                            var updated = profileManager.profile
+                                            updated.weight = validated
+                                            profileManager.profile = updated
+                                        }
                                     }
                                 ),
                                 unit: "g"
                             )
                         }
                         .background(
-                            Color(red: 0.15, green: 0.15, blue: 0.28)
+                            AppColors.backgroundCard
                         )
                         .cornerRadius(16)
                         .padding(.horizontal, 20)
@@ -207,8 +210,8 @@ struct BabyProfileDetailView: View {
                             .background(
                                 LinearGradient(
                                     colors: [
-                                        Color(red: 0.6, green: 0.5, blue: 0.75),
-                                        Color(red: 0.5, green: 0.4, blue: 0.65)
+                                        AppColors.accentPrimary,
+                                        AppColors.accentDark
                                     ],
                                     startPoint: .leading,
                                     endPoint: .trailing
@@ -236,13 +239,13 @@ struct BabyProfileDetailView: View {
                         }
                     ), displayedComponents: .date)
                         .datePickerStyle(.graphical)
-                        .accentColor(Color(red: 0.6, green: 0.5, blue: 0.75))
+                        .accentColor(AppColors.accentPrimary)
                         .colorScheme(.dark)
                         .padding()
                     
                     Spacer()
                 }
-                .background(Color(red: 0.08, green: 0.08, blue: 0.18))
+                .background(AppColors.backgroundDark)
                 .navigationTitle("Geburtstag")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarColorScheme(.dark, for: .navigationBar)
@@ -252,7 +255,7 @@ struct BabyProfileDetailView: View {
                         Button("Fertig") {
                             showDatePicker = false
                         }
-                        .foregroundColor(Color(red: 0.6, green: 0.5, blue: 0.75))
+                        .foregroundColor(AppColors.accentPrimary)
                     }
                 }
             }
@@ -278,7 +281,7 @@ struct BabyProfileTextFieldRow: View {
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(red: 0.2, green: 0.2, blue: 0.35))
+                        .fill(AppColors.backgroundInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
@@ -321,7 +324,7 @@ struct BabyProfileDateRow: View {
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(red: 0.2, green: 0.2, blue: 0.35))
+                        .fill(AppColors.backgroundInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
@@ -354,7 +357,7 @@ struct BabyProfilePickerRow: View {
                 }
             }
             .pickerStyle(.segmented)
-            .tint(Color(red: 0.6, green: 0.5, blue: 0.75))
+            .tint(AppColors.accentPrimary)
             .colorScheme(.dark)
         }
         .padding(.horizontal, 20)

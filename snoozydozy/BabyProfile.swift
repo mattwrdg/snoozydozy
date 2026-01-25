@@ -37,7 +37,6 @@ struct BabyProfile: Codable {
 // MARK: - Baby Profile Storage Manager
 class BabyProfileManager: ObservableObject {
     static let shared = BabyProfileManager()
-    private let storageKey = "babyProfile"
     
     @Published var profile: BabyProfile {
         didSet {
@@ -50,7 +49,7 @@ class BabyProfileManager: ObservableObject {
     }
     
     private static func load() -> BabyProfile {
-        guard let data = UserDefaults.standard.data(forKey: "babyProfile"),
+        guard let data = UserDefaults.standard.data(forKey: StorageKeys.babyProfile),
               let profile = try? JSONDecoder().decode(BabyProfile.self, from: data) else {
             return BabyProfile()
         }
@@ -58,12 +57,35 @@ class BabyProfileManager: ObservableObject {
     }
     
     private func save() {
-        if let encoded = try? JSONEncoder().encode(profile) {
-            UserDefaults.standard.set(encoded, forKey: storageKey)
+        do {
+            let encoded = try JSONEncoder().encode(profile)
+            UserDefaults.standard.set(encoded, forKey: StorageKeys.babyProfile)
+        } catch {
+            // Log error in production, fail silently for user experience
+            #if DEBUG
+            print("Error saving baby profile: \(error.localizedDescription)")
+            #endif
         }
     }
     
     func update(_ newProfile: BabyProfile) {
-        profile = newProfile
+        // Validate and sanitize input before updating
+        var validatedProfile = newProfile
+        validatedProfile.name = InputValidator.validateName(newProfile.name)
+        
+        if let validatedHeight = InputValidator.validateHeight(newProfile.height) {
+            validatedProfile.height = validatedHeight
+        }
+        
+        if let validatedWeight = InputValidator.validateWeight(newProfile.weight) {
+            validatedProfile.weight = validatedWeight
+        }
+        
+        if !InputValidator.validateBirthday(newProfile.birthday) {
+            // If birthday is in future, use current date
+            validatedProfile.birthday = Date()
+        }
+        
+        profile = validatedProfile
     }
 }
